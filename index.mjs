@@ -17,14 +17,25 @@ import * as backend from './build/index.main.mjs';
 
   const HAND = ['Rock', 'Paper', 'Scissors'];
   const OUTCOME = ['Bob wins', 'Draw', 'Alice wins'];
+  
   const Player = (Who) => ({
-    getHand: () => {
+    ...stdlib.hasRandom, //<-- new!
+    getHand: async () => {
       const hand = Math.floor(Math.random() * 3);
       console.log(`${Who} played ${HAND[hand]}`);
+      if (Math.random() <= 0.01){
+        for (let i =0; i<10; i++) {
+          console.log(` ${Who} takes their first sweet time sending it back.....`);
+          await stdlib.wait(1);
+        }
+      }
       return hand;
     },
     seeOutcome: (outcome) => {
       console.log(`${Who} saw outcome ${OUTCOME[outcome]}`);
+    },
+    informTimeout: () =>{
+      console.log(`$(Who) observed a timeout`);
     },
   });
 
@@ -36,7 +47,13 @@ import * as backend from './build/index.main.mjs';
     backend.Bob(ctcBob, {
         ...Player('Bob'),
      acceptWager: (amt) => {
-       console.log(`Bob accepts the wager of ${fmt(amt)}.`);
+       if (Math.random() <= 0.5) {
+         for (let i =0; i<10; i++){
+           console.log(`Bob takes his sweet time...`);
+           await stdlib.wait(1); }
+       }  else {
+         console.log(`Bob accepts the wager of ${fmt(amt)}. `);
+       }
      },
     }),
   ]);
