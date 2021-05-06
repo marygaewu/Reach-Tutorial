@@ -1,67 +1,108 @@
 import { loadStdlib } from '@reach-sh/stdlib';
 import * as backend from './build/index.main.mjs';
+import {ask, yesno, done} from '@reach-sh/stdlib/ask.mjs'
 
 (async () => {
   const stdlib = await loadStdlib();
-  const startingBalance = stdlib.parseCurrency(10);
-  const accAlice = await stdlib.newTestAccount(startingBalance);
-  const accBob = await stdlib.newTestAccount(startingBalance);
+  const isAlice =await ask(
+    `Are you Alice?`,
+    yesno
+  );
+  const who = isAlice ? 'Alice' : 'Bob';
+  console.log(`Starting Rock, Paper, Scissors! as ${who}`);
+
+  let acc =null;
+  const createAcc =await ask(
+    `would you like to create an account?(only possible on devnet)`,
+    yesno
+  );
+  if(createAcc){
+    acc = await stdlib.newTestAccount(stdlib.parsCurrency(1000));
+  }else {
+    const secret = await ask(
+      `what is your account secret?`,
+      (x => x)
+    );
+    acc = await stdlib.newAccountFromSecret(secret);
+  }
+
+  let ctc =null;
+  const deployCtc =await ask(
+    `Do you want to deploy the contract? (y/n)`,
+    yesno
+  );
+  if (deployCtc){
+    ctc =acc.deploy(backend);
+    const info = await ctc.getInfo();
+    console.log(`The contract is deployed as =${JSON.stringify(info)}`);
+  } else {
+    const info = await ask(
+      `Please paste the contract information:`,
+    );
+    ctc =acc.attach(backend, info);
+  }
 
   const fmt =(x) => stdlib.formatCurrency(x,4);
-  const getBalance =async(who)=> fmt(await stdlib.balanceOf(who));
-  const beforeAlice =await getBalance(accAlice);
-  const beforeBob   =await getBalance(accBob);
-
-  const ctcAlice = accAlice.deploy(backend);
-  const ctcBob = accBob.attach(backend, ctcAlice.getInfo());
-
-  const HAND = ['Rock', 'Paper', 'Scissors'];
-  const OUTCOME = ['Bob wins', 'Draw', 'Alice wins'];
+  const getBalance =async(who)=> fmt(await stdlib.balanceOf(acc));
   
-  const Player = (Who) => ({
-    ...stdlib.hasRandom, //<-- new!
-    getHand: async () => {
-      const hand = Math.floor(Math.random() * 3);
-      console.log(`${Who} played ${HAND[hand]}`);
-      if (Math.random() <= 0.01){
-        for (let i =0; i<10; i++) {
-          console.log(` ${Who} takes their first sweet time sending it back.....`);
-          await stdlib.wait(1);
-        }
+  const before =await getBalance();
+  console.log(`Your balance is ${before}`);
+
+  const interact ={...stdlib.hasRandom};
+  interact.informTimeout =() =>{
+    console.log(`There was a timeout.`);
+    Process.exit(1);
+  };
+
+  if(isAlice) {
+    const amt = await ask(
+        `how much do you want to wager?`,
+        stdlib.parseCurrency
+    );
+    interact.wager =amt;
+  }else {
+    interact.acceptWager =async(amt) =>{
+      const accepted = await ask(
+        `Do you accept the wager of ${fmt(amt)}`,
+        yesno
+      );
+      if (accepted){
+        return;
+      } else{
+        process.exit(0);
+      }
+    };
+  }
+ 
+  const HAND = ['Rock', 'Paper', 'Scissors'];
+  const HANDS = {
+    'ROCK': 0, 'R': 0, 'r': 0,
+    'Paper': 1, 'P': 1, 'p': 1,
+     'Scissors': 2, 'S': 2, 's':2};
+  
+  interact.getHand = async() => {
+    const hand = await ask (`What hand will you play?`, (x) => {
+      const hand = HANDS[x];
+      if (hand ==null){
+        throw Error(`Not a valid hand ${hand}`);
       }
       return hand;
-    },
-    seeOutcome: (outcome) => {
-      console.log(`${Who} saw outcome ${OUTCOME[outcome]}`);
-    },
-    informTimeout: () =>{
-      console.log(`$(Who) observed a timeout`);
-    },
   });
+    console.log(`You played ${HAND[hand]}`);
+    return hand;
+};
 
-  await Promise.all([
-    backend.Alice(ctcAlice, {
-         ...Player('Alice'),
-      wager: stdlib.parseCurrency(5),    
-    }),
-    backend.Bob(ctcBob, {
-        ...Player('Bob'),
-     acceptWager: (amt) => {
-       if (Math.random() <= 0.5) {
-         for (let i =0; i<10; i++){
-           console.log(`Bob takes his sweet time...`);
-           await stdlib.wait(1); }
-       }  else {
-         console.log(`Bob accepts the wager of ${fmt(amt)}. `);
-       }
-     },
-    }),
-  ]);
+const OUTCOME =['Bob wins', 'Draw', 'Alice wins'];
+ interact.seeoutcome = async (outcome) => {
+    console.log(`The outcome is: {OUTCOME[outcome]}`);
+ };
 
+const part = isAlice ? backend.Alice : backend.Bob;
+await part(ctc, interact);
 
-const afterAlice = await getBalance(accAlice);
-const afterBob = await getBalance(accBob);
+const after = await getBalance();
+console.log(`Your balance is now ${after}`);
 
-console.log(`Alice went from${beforeAlice} to ${afterAlice}`);
-console.log(`Bob went from${beforeBob} to ${afterBob}`)
+done();
 })();
+     
